@@ -23,5 +23,6 @@ struct task *map_lookup(struct hash **hash, long long key);
 void map_insert(struct hash **hash, long long key, struct task *val);
 void map_delete(struct hash **hash, long long key);
 struct task *map_lookup(struct hash **hash, long long key);
+void free_map(struct hash *map);
 
 #endif

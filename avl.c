@@ -18,13 +18,13 @@ static int compare(long long v1, long long p1, long long v2, long long p2)
     return 0;
 }
 
-struct task *find_by_pid(struct task *root, long long pid, long long vmruntime)
+struct task *avl_find_by_pid(struct task *root, long long pid, long long vmruntime)
 {
     if (!root) return NULL;
     int cmp = compare(vmruntime, pid, root->vmruntime, root->pid);
     if (cmp == 0) return root;
-    else if (cmp < 0) return find_by_pid(root->left, pid, vmruntime);
-    else return find_by_pid(root->right, pid, vmruntime);
+    else if (cmp < 0) return avl_find_by_pid(root->left, pid, vmruntime);
+    else return avl_find_by_pid(root->right, pid, vmruntime);
 }
 
 static long long get_height(struct task *node) 
@@ -71,24 +71,24 @@ static struct task *left_rotate(struct task *node)
     return root;
 }
 
-void print_tree(struct task *root)
+void avl_print_tree(struct task *root)
 {
     if (!root) return;
 
-    print_tree(root->left);
+    avl_print_tree(root->left);
     printf("%lld %lld\n", root->pid, root->vmruntime);
-    print_tree(root->right);
+    avl_print_tree(root->right);
 }
 
-struct task *find_min(struct task *root) 
+struct task *avl_find_min(struct task *root) 
 {
     if (!root) return NULL;
     if (!root->left) return root;
 
-    return find_min(root->left);
+    return avl_find_min(root->left);
 }
 
-struct task *insert(struct task *root, struct task *node) 
+struct task *avl_insert(struct task *root, struct task *node) 
 {
     if (!root) 
     {  
@@ -96,8 +96,8 @@ struct task *insert(struct task *root, struct task *node)
     }
 
     int cmp  = compare(node->vmruntime, node->pid, root->vmruntime, root->pid);
-    if (cmp < 0) root->left = insert(root->left, node);
-    else if (cmp > 0) root->right = insert(root->right, node);
+    if (cmp < 0) root->left = avl_insert(root->left, node);
+    else if (cmp > 0) root->right = avl_insert(root->right, node);
 
     root->height = 1 + max(get_height(root->left), get_height(root->right));
 
@@ -147,7 +147,7 @@ struct task *insert(struct task *root, struct task *node)
     return root;
 }
 
-struct task *delete(struct task *root, struct task **bubbled_node, long long pid, long long vmruntime) 
+struct task *avl_delete(struct task *root, struct task **bubbled_node, long long pid, long long vmruntime) 
 {
     if (root == NULL) return root;
 
@@ -155,8 +155,8 @@ struct task *delete(struct task *root, struct task **bubbled_node, long long pid
     struct task *replace = NULL;
 
     int cmp = compare(vmruntime, pid, root->vmruntime, root->pid);
-    if (cmp < 0) root->left = delete(root->left, bubbled_node, pid, vmruntime);
-    else if (cmp > 0) root->right = delete(root->right, bubbled_node, pid, vmruntime);
+    if (cmp < 0) root->left = avl_delete(root->left, bubbled_node, pid, vmruntime);
+    else if (cmp > 0) root->right = avl_delete(root->right, bubbled_node, pid, vmruntime);
 
     if (!root) return NULL;
 
@@ -164,12 +164,13 @@ struct task *delete(struct task *root, struct task **bubbled_node, long long pid
     {
         if (root->left && root->right) 
         {
-            replace = find_min(root->right);
+            replace = avl_find_min(root->right);
             
             root->pid = replace->pid;
             root->vmruntime = replace->vmruntime;
+            root->remaining_time = replace->remaining_time;
 
-            root->right = delete(root->right, bubbled_node, replace->pid, replace->vmruntime);
+            root->right = avl_delete(root->right, bubbled_node, replace->pid, replace->vmruntime);
         } 
         else if (root->left) 
         {

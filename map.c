@@ -156,8 +156,11 @@ void free_map(struct hash *map)
             free(map->hashmap[i]);
         }
     }
-    free(map->hashmap);
-    free(map);
+    if (map)
+    {
+        free(map->hashmap);
+        free(map);
+    }
 }
 
 void map_insert(struct hash **hash, long long key, struct task *val)
