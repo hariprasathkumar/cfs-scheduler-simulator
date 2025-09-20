@@ -16,7 +16,12 @@ struct key_value_pair
     struct task *val;
 };
 
-void map_init(struct hash **map, long long no_of_slots) ;
+void map_init(struct hash **hash, long long no_of_slots,
+    int (*hash_fn)(struct hash *hash, long long key));
+
+struct task *map_lookup(struct hash **hash, long long key);
 void map_insert(struct hash **hash, long long key, struct task *val);
+void map_delete(struct hash **hash, long long key);
+struct task *map_lookup(struct hash **hash, long long key);
 
 #endif

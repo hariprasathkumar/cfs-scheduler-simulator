@@ -1,15 +1,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-struct task 
-{
-    long long vmruntime;
-    long long pid;
-    long long height;
-    struct task *left;
-    struct task *right;
-};
+#include "avl.h"
 
 static inline size_t max(long long a, long long b)
 {
@@ -96,21 +88,16 @@ struct task *find_min(struct task *root)
     return find_min(root->left);
 }
 
-struct task *insert(struct task *root, long long pid, long long vmruntime) 
+struct task *insert(struct task *root, struct task *node) 
 {
     if (!root) 
-    {
-        struct task *node = (struct task *)malloc(sizeof(struct task));
-        node->pid = pid;
-        node->height = 1;
-        node->left = node->right = NULL;
-        node->vmruntime = vmruntime; 
+    {  
         return node;
     }
 
-    int cmp  = compare(vmruntime, pid, root->vmruntime, root->pid);
-    if (cmp < 0) root->left = insert(root->left, pid, vmruntime);
-    else if (cmp > 0) root->right = insert(root->right, pid, vmruntime);
+    int cmp  = compare(node->vmruntime, node->pid, root->vmruntime, root->pid);
+    if (cmp < 0) root->left = insert(root->left, node);
+    else if (cmp > 0) root->right = insert(root->right, node);
 
     root->height = 1 + max(get_height(root->left), get_height(root->right));
 
@@ -128,9 +115,9 @@ struct task *insert(struct task *root, long long pid, long long vmruntime)
     */
     if (bf_cur > 1 && root->left) // LL
     {
-        if (compare(vmruntime, pid, root->left->vmruntime, root->left->pid) < 0)
+        if (compare(node->vmruntime, node->pid, root->left->vmruntime, root->left->pid) < 0)
             root = right_rotate(root);
-        else if (compare(vmruntime, pid, root->left->vmruntime, root->left->pid) > 0)
+        else if (compare(node->vmruntime, node->pid, root->left->vmruntime, root->left->pid) > 0)
         {
             root->left = left_rotate(root->left);
             root = right_rotate(root);
@@ -148,9 +135,9 @@ struct task *insert(struct task *root, long long pid, long long vmruntime)
     */
     else if (bf_cur < -1 && root->right) // RR
     {
-        if (compare(vmruntime, pid, root->right->vmruntime, root->right->pid) > 0)
+        if (compare(node->vmruntime, node->pid, root->right->vmruntime, root->right->pid) > 0)
         root = left_rotate(root);
-        else if (compare(vmruntime, pid, root->right->vmruntime, root->right->pid) < 0)
+        else if (compare(node->vmruntime, node->pid, root->right->vmruntime, root->right->pid) < 0)
         {
             root->right = right_rotate(root->right);
             root = left_rotate(root);
@@ -160,7 +147,7 @@ struct task *insert(struct task *root, long long pid, long long vmruntime)
     return root;
 }
 
-struct task *delete(struct task *root, long long pid, long long vmruntime) 
+struct task *delete(struct task *root, struct task **bubbled_node, long long pid, long long vmruntime) 
 {
     if (root == NULL) return root;
 
@@ -168,36 +155,39 @@ struct task *delete(struct task *root, long long pid, long long vmruntime)
     struct task *replace = NULL;
 
     int cmp = compare(vmruntime, pid, root->vmruntime, root->pid);
-    if (cmp < 0) root->left = delete(root->left, pid, vmruntime);
-    else if (cmp > 0) root->right = delete(root->right, pid, vmruntime);
+    if (cmp < 0) root->left = delete(root->left, bubbled_node, pid, vmruntime);
+    else if (cmp > 0) root->right = delete(root->right, bubbled_node, pid, vmruntime);
 
     if (!root) return NULL;
 
-    if (root->left && root->right) 
+    if (cmp == 0)
     {
-        replace = find_min(root->right);
-        
-        root->pid = replace->pid;
-        root->vmruntime = replace->vmruntime;
+        if (root->left && root->right) 
+        {
+            replace = find_min(root->right);
+            
+            root->pid = replace->pid;
+            root->vmruntime = replace->vmruntime;
 
-        root->right = delete(root->right, replace->pid, replace->vmruntime);
-    } 
-    else if (root->left) 
-    {
-        replace = root->left;
-        free(root);
-        root = replace;
-    } 
-    else if (root->right) 
-    {
-        replace = root->right;
-        free(root);
-        root = replace;
-    } 
-    else
-    {
-        free(root);
-        return NULL;
+            root->right = delete(root->right, bubbled_node, replace->pid, replace->vmruntime);
+        } 
+        else if (root->left) 
+        {
+            replace = root->left;
+            *bubbled_node = root;
+            root = replace;
+        } 
+        else if (root->right) 
+        {
+            replace = root->right;
+            *bubbled_node = root;
+            root = replace;
+        } 
+        else
+        {
+            *bubbled_node = root;
+            return NULL;
+        }
     }
 
     root->height = 1 + max(get_height(root->left), get_height(root->right));

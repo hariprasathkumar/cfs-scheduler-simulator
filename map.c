@@ -7,9 +7,40 @@
 #define TOMBSTONE                ((void *)-1)
 #define LOAD_FACTOR_THRESHOLD    (0.7f)
 
-size_t hash_key(struct hash *hash, long long key)
+int hash_key(struct hash *hash, long long key)
 {
     return key % hash->table_size;
+}
+
+static int hash2(struct hash *map, long long key)
+{
+    return 1 + (map->hash_fn(map, key) % (map->table_size - 1));
+}
+
+static inline void update_load_factor(struct hash *map)
+{
+    if (map)
+    map->load_factor = (float)map->num_of_elements / map->table_size;
+}
+
+static char isPrime(long long i)
+{
+    if (i <= 1) return 0;
+    if (i == 2) return 1;
+    if (i % 2 == 0) return 0;
+
+    for (size_t j = 3; j * j <= i; j++)
+    {
+        if (i % j == 0) return 0;
+    }
+
+    return 1; // no number below its sqrt is divisible
+}
+
+static long long getPrime(long long start)
+{
+    while (!isPrime(start)) start++;
+    return start;
 }
 
 void map_init(struct hash **hash, long long no_of_slots,
@@ -55,37 +86,6 @@ void map_init(struct hash **hash, long long no_of_slots,
     hash2(key) = 1 + (hash1(key) % N-1) => modulo N-1 ensure 0..N-2 range +1 is to avoid infinite loop / mov ethe step so 1..N-1 (no 0, causes loop) 
 */
 
-static int hash2(struct hash *map, long long key)
-{
-    return 1 + (map->hash_fn(map, key) % (map->table_size - 1));
-}
-
-static inline void update_load_factor(struct hash *map)
-{
-    if (map)
-    map->load_factor = (float)map->num_of_elements / map->table_size;
-}
-
-static char isPrime(long long i)
-{
-    if (i <= 1) return 0;
-    if (i == 2) return 1;
-    if (i % 2 == 0) return 0;
-
-    for (size_t j = 3; j * j <= i; j++)
-    {
-        if (i % j == 0) return 0;
-    }
-
-    return 1; // no number below its sqrt is divisible
-}
-
-static long long getPrime(long long start)
-{
-    while (!isPrime(start)) start++;
-    return start;
-}
-
 static struct hash * rehash(struct hash *map)
 {
     long long cur_size = map->table_size;
@@ -130,7 +130,7 @@ struct task *map_lookup(struct hash **hash, long long key)
     struct hash *map = *hash;
     for (long long i = 0; i < map->table_size; i++) 
     {
-        long long index = (map->hash_fn(map, key) + i * hash2(map, key)) % map->table_size;
+        long long index = ((long long)map->hash_fn(map, key) + i * hash2(map, key)) % map->table_size;
 
         if (!map->hashmap[index]) return NULL;
         else if (map->hashmap[index] == TOMBSTONE) continue;
@@ -171,7 +171,7 @@ void map_insert(struct hash **hash, long long key, struct task *val)
     struct hash *map = *hash;
     for (long long i = 0; i < map->table_size; i++) 
     {
-        long long index = (map->hash_fn(map, key) + i * hash2(map, key)) % map->table_size;
+        long long index = ((long long)map->hash_fn(map, key) + i * hash2(map, key)) % map->table_size;
 
         if (!map->hashmap[index] || map->hashmap[index] == TOMBSTONE)
         {
@@ -212,11 +212,11 @@ void map_delete(struct hash **hash, long long key)
     struct hash *map = *hash;
     for (long long i = 0; i < map->table_size; i++) 
     {
-        long long index = (map->hash_fn(map, key) + i * hash2(map, key)) % map->table_size;
+        long long index = ((long long)map->hash_fn(map, key) + i * hash2(map, key)) % map->table_size;
 
         if (map->hashmap[index] && map->hashmap[index] != TOMBSTONE && map->hashmap[index]->key == key) 
         {
-            free(map->hashmap[index]);
+            // free outside
             map->hashmap[index] = TOMBSTONE;
             map->num_of_elements--;
             update_load_factor(map);
