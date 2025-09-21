@@ -38,7 +38,7 @@ Each line in `scheduler_input.txt` describes a scheduling event:
 
 ### Example:
 
-0  START   1  30
+```0  START   1  30
 0  START   2  40
 5  SLEEP   1  0
 8  START   3  25
@@ -63,7 +63,7 @@ Each line in `scheduler_input.txt` describes a scheduling event:
 60 SLEEP   5  0
 62 WAKEUP  5  0
 65 EXIT    5  0
-70 EXIT    6  0
+70 EXIT    6  0```
 
 
 ---
@@ -79,7 +79,7 @@ Each line in `scheduler_input.txt` describes a scheduling event:
 
 `valgrind --leak-check=full --show-leak-kinds=all ./main`
 
-Process event: 0 START 1 30
+```Process event: 0 START 1 30
 [TIME 0] PID=1 STARTED (runtime=30)
 [TIME 0] PID=1 ran for 0 ms → new vruntime=0, remaining=30
 Process event: 0 START 2 40
@@ -111,4 +111,4 @@ Process event: 25 EXIT 1 0
 [TIME 28] PID=4 ran for 3 ms → new vruntime=10, remaining=45
 Process event: 28 SLEEP 4 0
 [TIME 30] PID=3 ran for 2 ms → new vruntime=10, remaining=18
-....
+....```
