@@ -36,6 +36,21 @@ Each line in `scheduler_input.txt` describes a scheduling event:
 - `pid` — process ID (unique per task)  
 - `duration` — runtime if `START`, otherwise ignored  
 
+---
+
+##  Usage
+
+### Build
+
+`gcc -fsanitize=address -g -o main main.c avl.c map.c`
+`./main`
+
+### Debug with Valgrind
+
+`valgrind --leak-check=full --show-leak-kinds=all ./main`
+
+---
+
 ### Example:
 
 ```0  START   1  30
@@ -64,20 +79,6 @@ Each line in `scheduler_input.txt` describes a scheduling event:
 62 WAKEUP  5  0
 65 EXIT    5  0
 70 EXIT    6  0```
-
-
----
-
-##  Usage
-
-### Build
-
-`gcc -fsanitize=address -g -o main main.c avl.c map.c`
-`./main`
-
-### Debug with Valgrind
-
-`valgrind --leak-check=full --show-leak-kinds=all ./main`
 
 ```Process event: 0 START 1 30
 [TIME 0] PID=1 STARTED (runtime=30)
