@@ -29,7 +29,14 @@ static int balance_factor(struct task *node)
 
     return get_height(node->left) - get_height(node->right);
 }
-
+/* Right rotate subtree rooted at x
+ *
+ *       x                 y
+ *      / \               / \
+ *     y   T3   --->     T1  x
+ *    / \                   / \
+ *   T1  T2                T2  T3
+ */
 static struct task *right_rotate(struct task *node) 
 {
     struct task *y  = node->left;
@@ -45,7 +52,14 @@ static struct task *right_rotate(struct task *node)
 
     return y;
 }
-
+/* Left rotate subtree rooted at x
+ *
+ *    x                    y
+ *   / \                  / \
+ *  T1  y     --->       x  T3
+ *     / \              / \
+ *    T2  T3           T1 T2
+ */
 static struct task *left_rotate(struct task *node) 
 {
     struct task *y  = node->right;
