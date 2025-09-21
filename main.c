@@ -83,10 +83,10 @@ void node_delete(long long pid, char is_exit) {
             #endif
             return;
         }
-        *saved_heap = *victim;           /* shallow copy is OK for current struct */
+        *saved_heap = *victim;         
         saved_heap->left = saved_heap->right = NULL;
         saved_heap->height = 1;
-        saved_heap->pid = pid;            /* ensure consistency */
+        saved_heap->pid = pid;         
     }
 
     if (is_exit) {
