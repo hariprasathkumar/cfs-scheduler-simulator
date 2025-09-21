@@ -18,15 +18,6 @@ static int compare(long long v1, long long p1, long long v2, long long p2)
     return 0;
 }
 
-struct task *avl_find_by_pid(struct task *root, long long pid, long long vmruntime)
-{
-    if (!root) return NULL;
-    int cmp = compare(vmruntime, pid, root->vmruntime, root->pid);
-    if (cmp == 0) return root;
-    else if (cmp < 0) return avl_find_by_pid(root->left, pid, vmruntime);
-    else return avl_find_by_pid(root->right, pid, vmruntime);
-}
-
 static long long get_height(struct task *node) 
 {
     return !node ? 0 : node->height;
@@ -41,34 +32,34 @@ static int balance_factor(struct task *node)
 
 static struct task *right_rotate(struct task *node) 
 {
-    struct task *root = node->left;
-    struct task *subtree = root->right;
+    struct task *y  = node->left;
+    struct task *T2 = y->right;
 
-    if (root)
-        root->right = node;
+    // Perform rotation, reversing the order will create a cycle !!
+    node->left = T2;
+    y->right   = node;
 
-    node->left = subtree;
-
+    // Update heights
     node->height = 1 + max(get_height(node->left), get_height(node->right));
-    root->height = 1 + max(get_height(root->left), get_height(root->right));
+    y->height    = 1 + max(get_height(y->left), get_height(y->right));
 
-    return root;
+    return y;
 }
 
 static struct task *left_rotate(struct task *node) 
 {
-    struct task *root = node->right;
-    struct task *subtree = root->left;
+    struct task *y  = node->right;
+    struct task *T2 = y->left;
 
-    if (root) 
-        root->left = node;
+    // Perform rotation, reversing the order will create a cycle !!
+    node->right = T2;
+    y->left     = node;
 
-    node->right = subtree;
-
+    // Update heights
     node->height = 1 + max(get_height(node->left), get_height(node->right));
-    root->height = 1 + max(get_height(root->left), get_height(root->right));
+    y->height    = 1 + max(get_height(y->left), get_height(y->right));
 
-    return root;
+    return y;
 }
 
 void avl_print_tree(struct task *root)
@@ -76,7 +67,9 @@ void avl_print_tree(struct task *root)
     if (!root) return;
 
     avl_print_tree(root->left);
-    printf("%lld %lld\n", root->pid, root->vmruntime);
+    #ifdef DEBUG
+    fprintf(stdout, "%lld %lld %lld\n", root->pid, root->vmruntime, root->remaining_time);
+    #endif
     avl_print_tree(root->right);
 }
 
@@ -88,10 +81,32 @@ struct task *avl_find_min(struct task *root)
     return avl_find_min(root->left);
 }
 
+struct task *avl_find_by_pid(struct task *root, long long pid) 
+{
+    struct task *stack[1024];
+    int top = 0;
+
+    if (root) stack[top++] = root;
+
+    while (top > 0) {
+        struct task *cur = stack[--top];
+
+        if (cur->pid == pid)
+            return cur;
+
+        if (cur->right) stack[top++] = cur->right;
+        if (cur->left)  stack[top++] = cur->left;
+    }
+
+    return NULL;
+}
+
 struct task *avl_insert(struct task *root, struct task *node) 
 {
     if (!root) 
     {  
+        node->height = 1;
+        node->left = node->right = NULL;
         return node;
     }
 

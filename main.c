@@ -24,10 +24,8 @@ struct scheduler
     size_t sim_time;
     FILE *fin;
     int event_complete;
-    char *last_scheduler_command;
     struct input last_command;
     struct task *run_queue;
-    struct hash *run_queue_task_map;
     struct hash *wake_queue_task_map;
 };
 
@@ -57,74 +55,58 @@ static long long get_init_vmruntime(void)
     return t ? t->vmruntime : 0;
 }
 
-void node_delete(long long pid, char is_exit)
-{
-    struct task *bubbled_node = NULL;
-    struct task *map_ptr = map_lookup(&scheduler.run_queue_task_map, pid);
+void node_delete(long long pid, char is_exit) {
+    struct task *bubbled = NULL;
 
-    if (!map_ptr) {
-        fprintf(stderr, "node_delete: pid %lld not present in run_map\n", pid);
+    struct task *victim = avl_find_by_pid(scheduler.run_queue, pid);
+    if (!victim) {
+        #ifdef DEBUG
+        fprintf(stderr, "node_delete: pid=%lld not found in AVL\n", pid);
+        #endif
         return;
     }
 
-    struct task *saved_copy = NULL;
+    scheduler.run_queue = avl_delete(scheduler.run_queue, &bubbled, victim->pid, victim->vmruntime);
+    if (!bubbled) {
+        #ifdef DEBUG
+        fprintf(stderr, "avl_delete failed for pid=%lld\n", pid);
+        #endif
+        return;
+    }
+
+    struct task *saved_heap = NULL;
     if (!is_exit) {
-        saved_copy = malloc(sizeof *saved_copy);
-        if (!saved_copy) {
-            fprintf(stderr, "oom\n");
+        saved_heap = malloc(sizeof *saved_heap);
+        if (!saved_heap) {
+            #ifdef DEBUG
+            fprintf(stderr, "node_delete: oom saving payload for pid=%lld\n", pid);
+            #endif
             return;
         }
-        *saved_copy = *map_ptr;   
-        saved_copy->left = saved_copy->right = NULL;
-        saved_copy->height = 1;
+        *saved_heap = *victim;           /* shallow copy is OK for current struct */
+        saved_heap->left = saved_heap->right = NULL;
+        saved_heap->height = 1;
+        saved_heap->pid = pid;            /* ensure consistency */
     }
 
-    scheduler.run_queue = avl_delete(scheduler.run_queue, &bubbled_node, pid, map_ptr->vmruntime);
-    if (!bubbled_node) {
-        fprintf(stderr, "AVL delete failed for pid=%lld\n", pid);
-        free(saved_copy);
-        return;
-    }
-
-    /* Two cases: physical pointer removed equals map pointer, or it doesn't. */
-    if (bubbled_node == map_ptr) {
-        /* straightforward: the struct referenced by map was removed */
-        map_delete(&scheduler.run_queue_task_map, pid);
-
-        if (is_exit) {
-            printf("Exiting PID=%lld, found in runqueue=%p, in sleep map=%p", pid, scheduler.run_queue, scheduler.wake_queue_task_map);
-            free(bubbled_node); // fully exit
-        } else {
-            
-            printf("Moving PID=%lld to sleep map", pid);
-            bubbled_node->left = bubbled_node->right = NULL;
-            bubbled_node->height = 1;
-            map_insert(&scheduler.wake_queue_task_map, pid, bubbled_node);
-            free(saved_copy); /* saved_copy not needed */
-        }
+    if (is_exit) {
+        free_wrapper(bubbled, "Node delete, exit");
     } else {
-        /* two-child case: the tree overwrote the map_ptr contents with successor data,
-           and bubbled_node is the physical node removed (successor). */
-
-        long long successor_pid = bubbled_node->pid;
-
-        map_delete(&scheduler.run_queue_task_map, successor_pid);
-        map_insert(&scheduler.run_queue_task_map, successor_pid, map_ptr);
-
-        map_delete(&scheduler.run_queue_task_map, pid);
-
-        if (is_exit) {
-            printf("Exiting PID=%lld, found in runqueue=%p, in sleep map=%p", pid, scheduler.run_queue, scheduler.wake_queue_task_map);
-            free(bubbled_node);
-        } else {
-            printf("Moving PID=%lld to sleep map", pid);
-            map_insert(&scheduler.wake_queue_task_map, pid, saved_copy);
-            free(bubbled_node);
-        }
+        free_wrapper(bubbled, "Node delete, sleep");
+        map_insert(&scheduler.wake_queue_task_map, pid, saved_heap);
+        #ifdef DEBUG
+        fprintf(stdout, "wake_insert: key=%lld ptr=%p pid=%lld\n", pid, saved_heap, saved_heap->pid);
+        #endif
     }
 }
 
-void new_task_event(long long pid, long long vmruntime) {
+
+void new_task_event(long long pid, long long vmruntime) 
+{
+    #ifdef DEBUG
+    avl_print_tree(scheduler.run_queue);
+    map_print_all(scheduler.wake_queue_task_map);
+    #endif
     struct task *t = malloc(sizeof(struct task));
     t->pid = pid;
     t->vmruntime = get_init_vmruntime();
@@ -132,7 +114,6 @@ void new_task_event(long long pid, long long vmruntime) {
     t->height = 1;
     t->left = t->right = NULL;
 
-    map_insert(&scheduler.run_queue_task_map, pid, t);
     scheduler.run_queue = avl_insert(scheduler.run_queue, t);
     scheduler.number_of_tasks++;
 
@@ -140,56 +121,82 @@ void new_task_event(long long pid, long long vmruntime) {
            scheduler.sim_time, pid, vmruntime);
 }
 
-void sleep_task_event(long long pid) {
-    struct task *n = map_lookup(&scheduler.run_queue_task_map, pid);
+void sleep_task_event(long long pid) 
+{
+    #ifdef DEBUG
+    avl_print_tree(scheduler.run_queue);
+    #endif
+    struct task *n = avl_find_by_pid(scheduler.run_queue, pid);
     if (!n) {
+        #ifdef DEBUG
         fprintf(stderr, "SLEEP: PID %lld not found in runqueue\n", pid);
+        #endif
         return;
     }
 
-    node_delete(pid, 0); // moves to wake map
-    printf("[TIME %zu] PID=%lld went to SLEEP (remaining=%lld)\n",
+
+    #ifdef DEBUG
+    fprintf(stdout, "[TIME %zu] PID=%lld went to SLEEP (remaining=%lld)\n",
            scheduler.sim_time, pid, n->remaining_time);
+    #endif
+    node_delete(pid, 0); // moves to wake map
+    #ifdef DEBUG
+    map_print_all(scheduler.wake_queue_task_map);
+    #endif
 }
 
 void wakeup_task_event(long long pid) {
+    #ifdef DEBUG
+    avl_print_tree(scheduler.run_queue);
+    map_print_all(scheduler.wake_queue_task_map);
+    #endif
     struct task *wake_node = map_lookup(&scheduler.wake_queue_task_map, pid);
     if (!wake_node) {
+        #ifdef DEBUG
         fprintf(stderr, "WAKEUP: PID %lld not found in sleep map\n", pid);
+        #endif
         return;
     }
 
+    assert(wake_node->pid == pid);
     map_delete(&scheduler.wake_queue_task_map, pid);
     scheduler.run_queue = avl_insert(scheduler.run_queue, wake_node);
-    map_insert(&scheduler.run_queue_task_map, wake_node->pid, wake_node);
 
-    printf("[TIME %zu] PID=%lld WOKE UP (vruntime=%lld, remaining=%lld)\n",
+    
+    fprintf(stdout, "[TIME %zu] PID=%lld WOKE UP (vruntime=%lld, remaining=%lld)\n",
            scheduler.sim_time, wake_node->pid, wake_node->vmruntime, wake_node->remaining_time);
 }
 
 void exit_task_event(long long pid) {
-    struct task *n = map_lookup(&scheduler.run_queue_task_map, pid);
+    avl_print_tree(scheduler.run_queue);
+    map_print_all(scheduler.wake_queue_task_map);
+    struct task *n = avl_find_by_pid(scheduler.run_queue, pid);
     if (n) {
         node_delete(pid, 1);
         scheduler.number_of_tasks--;
-        printf("[TIME %zu] PID=%lld EXITED\n", scheduler.sim_time, pid);
+        fprintf(stdout, "[TIME %zu] PID=%lld EXITED\n", scheduler.sim_time, pid);
         return;
     }
 
     n = map_lookup(&scheduler.wake_queue_task_map, pid);
     if (n) {
         map_delete(&scheduler.wake_queue_task_map, n->pid);
-        free(n);
+        free_wrapper(n, "Node delete, exit");
         scheduler.number_of_tasks--;
-        printf("[TIME %zu] PID=%lld EXITED\n", scheduler.sim_time, pid);
+        fprintf(stdout, "[TIME %zu] PID=%lld EXITED\n", scheduler.sim_time, pid);
         return;
     }
 
+    #ifdef DEBUG
     fprintf(stderr, "EXIT: Unknown PID %lld\n", pid);
+    #endif
 }
 
 void process_next_event(void) {
     if (scheduler.last_command.time <= scheduler.sim_time && !scheduler.event_complete) {
+        fprintf(stdout, "Process event: %lld %s %lld %lld\n", scheduler.last_command.time, 
+            scheduler.last_command.action, scheduler.last_command.pid, scheduler.last_command.runtime);
+
         if (strcmp(scheduler.last_command.action, start_task_str) == 0) {
             new_task_event(scheduler.last_command.pid, scheduler.last_command.runtime);
         } else if (strcmp(scheduler.last_command.action, sleep_task_str) == 0) {
@@ -199,18 +206,18 @@ void process_next_event(void) {
         } else if (strcmp(scheduler.last_command.action, exit_task_str) == 0) {
             exit_task_event(scheduler.last_command.pid);
         } else {
+            #ifdef DEBUG
             fprintf(stderr, "Unknown action: %s\n", scheduler.last_command.action);
+            #endif
         }
 
-        int eof = fscanf(scheduler.fin, "%lld %127s %lld %lld %lld %lld",
+        int eof = fscanf(scheduler.fin, "%lld %127s %lld %lld",
                          &scheduler.last_command.time,
                          scheduler.last_command.action,
                          &scheduler.last_command.pid,
-                         &scheduler.last_command.runtime,
-                         &scheduler.last_command.weight,
-                         &scheduler.last_command.duration);
+                         &scheduler.last_command.runtime);
 
-        if (eof != 6) scheduler.event_complete = 1;
+        if (eof == EOF) scheduler.event_complete = 1;
     }
     else if (scheduler.last_command.time > scheduler.sim_time && !scheduler.run_queue) {
         // only fast-forward if no runnable tasks
@@ -222,10 +229,11 @@ static void reschedule_task(struct task *t, size_t slice) {
     struct task *bubbled_node = NULL;
 
     // Remove from runqueue + hashmap
-    map_delete(&scheduler.run_queue_task_map, t->pid);
     scheduler.run_queue = avl_delete(scheduler.run_queue, &bubbled_node, t->pid, t->vmruntime);
     if (!bubbled_node) {
+        #ifdef DEBUG
         fprintf(stderr, "reschedule_task: AVL delete failed for pid=%lld\n", t->pid);
+        #endif
         return;
     }
 
@@ -234,17 +242,15 @@ static void reschedule_task(struct task *t, size_t slice) {
     t->vmruntime += slice;
     t->remaining_time -= slice;
 
-    printf("[TIME %zu] PID=%lld ran for %zu ms → new vruntime=%lld, remaining=%lld\n",
+    fprintf(stdout, "[TIME %zu] PID=%lld ran for %zu ms → new vruntime=%lld, remaining=%lld\n",
            scheduler.sim_time, t->pid, slice, t->vmruntime, t->remaining_time);
 
     // Reinsert if still alive
     if (t->remaining_time > 0) {
         scheduler.run_queue = avl_insert(scheduler.run_queue, t);
-        map_insert(&scheduler.run_queue_task_map, t->pid, t);
-        assert(map_lookup(&scheduler.run_queue_task_map, t->pid) == t);
     } else {
-        printf("[TIME %zu] PID=%lld EXITED\n", scheduler.sim_time, t->pid);
-        free(t);
+        fprintf(stdout, "[TIME %zu] PID=%lld EXITED\n", scheduler.sim_time, t->pid);
+        free_wrapper(t, "reschedule_task");
         scheduler.number_of_tasks--;
     }
 }
@@ -255,22 +261,30 @@ int main()
 
     if (!scheduler.fin) 
     {
+        #ifdef DEBUG
         fprintf(stderr, "cant open file\n");
+        #endif
         return -1;
     }
 
-    map_init(&scheduler.run_queue_task_map, 11, NULL); 
-    map_init(&scheduler.wake_queue_task_map, 11, NULL);
+    if (map_init(&scheduler.wake_queue_task_map, 11, NULL) < 0) 
+    {
+        #ifdef DEBUG
+        fprintf(stderr, "cant init map\n");
+        #endif
+        return -1;
+    }
 
-    if (fscanf(scheduler.fin, "%lld %127s %lld %lld %lld %lld",
+    if (fscanf(scheduler.fin, "%lld %127s %lld %lld",
             &scheduler.last_command.time,
             scheduler.last_command.action,
             &scheduler.last_command.pid,
-            &scheduler.last_command.runtime,
-            &scheduler.last_command.weight,
-            &scheduler.last_command.duration) == EOF) 
+            &scheduler.last_command.runtime) == EOF) 
     {
-        return 0;
+        #ifdef DEBUG
+        fprintf(stderr, "file data format error\n");
+        #endif
+        return -1;
     }
 
     while (!scheduler.event_complete || scheduler.run_queue) 
@@ -282,6 +296,9 @@ int main()
 
         if (scheduler.run_queue && scheduler.number_of_tasks > 0) 
         {
+            #ifdef DEBUG
+            avl_print_tree(scheduler.run_queue);
+            #endif
             struct task *n = avl_find_min(scheduler.run_queue);
             size_t slice = max(scheduler.min_granularity, scheduler.sched_latency / scheduler.number_of_tasks);
 
@@ -295,8 +312,8 @@ int main()
         }
     }
 
-    free_map(scheduler.run_queue_task_map);
     free_map(scheduler.wake_queue_task_map);
+    fclose(scheduler.fin);
 
     return 0;
 }
