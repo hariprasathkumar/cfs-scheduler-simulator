@@ -5,19 +5,6 @@ This project simulates Linux-style task scheduling using an **AVL tree** as the 
 
 ---
 
-##  Project Structure
-
-.
-├── avl.c # AVL tree implementation (ordered by vmruntime)
-├── avl.h
-├── map.c # Hash map implementation (used for wake/sleep tracking)
-├── map.h
-├── main.c # CFS simulation driver
-└── scheduler_input.txt # Example input file for events
-
-
----
-
 ##  Features
 
 - **AVL Tree**  
